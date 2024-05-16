@@ -42,10 +42,13 @@ Main functions
     p01: p-value for the effect on path 0 -> 1, considering 1 and 3 as competing events
 
 ## simulation1.R
-Simulation (Part 1): generate data, draw estimated cumulative incidences, calculate bias
+Simulation (Part 1): generate data, draw estimated cumulative incidences, calculate bias when assumptions hold
 
-## simulation2.R
-Simulation (Part 2): generate data, test pathway effects, evaluate confidence intervals
+## coverage.R
+Simulation (Part 2): assess the coverage of confidence intervals
+
+## test.R
+Simulation (Part 3): assess the type I error and power of hypothesis tests
 
 ## sensitivity.R
 Sensitivity analysis, where the dismissible treatment decomposition assumption is violated
