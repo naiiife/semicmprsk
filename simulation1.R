@@ -1,44 +1,53 @@
 ## Estimation
+expit <- function(x) 1/(1+exp(-x))
+
+source('semicompeting.R')
+
+xseq = seq(0,8,length=100)
 
 generatedata <- function(N,setting,Z1=1,Z2=1,Z3=1){
-  X = rbinom(N,1,0.5)/2 + 0.5
-  A = rbinom(N,1,X/3+0.25)
+  X1 = rbinom(N,1,0.5)/2+0.5
+  X2 = rbinom(N,1,0.5)/2+0.5
+  X = cbind(X1,X2)
+  A = rbinom(N,1,expit(0.4*X1+0.8*X2-0.6))
   if (setting==1){ #markov&semimarkov
-    TorR0 = rexp(N,0.25*X)
-    TorR1 = rexp(N,0.25*X+0.15*Z1+0.1*Z2)
+    TorR0 = rexp(N,0.25*X1)
+    TorR1 = rexp(N,0.25*X1+0.15*Z1+0.1*Z2)
     T0d = rbinom(N,1,15/25)
-    T1d = rbinom(N,1,0.15*(X+Z1)/(0.25*X+0.15*Z1+0.1*Z2))
+    T1d = rbinom(N,1,0.15*(X1+Z1)/(0.25*X1+0.15*Z1+0.1*Z2))
     # If Tad=1, T happens; If Tad=0, R happens.
     # Next generate T-R when Tad=0.
-    TwR0 = rexp(N,0.2)
-    TwR1 = rexp(N,0.2*(1+Z3))
+    TwR0 = rexp(N,0.2*X2)
+    TwR1 = rexp(N,0.2*(X2+Z3))
   }
   if (setting==2){ #markov
-    TorR0 = rweibull(N,2,sqrt(2/(0.06*X)))
-    TorR1 = rweibull(N,2,sqrt(2/(0.06*X+0.04*Z1+0.02*Z2)))
+    TorR0 = rweibull(N,2,sqrt(2/(0.06*X1)))
+    TorR1 = rweibull(N,2,sqrt(2/(0.06*X1+0.04*Z1+0.02*Z2)))
     T0d = rbinom(N,1,2/3)
-    T1d = rbinom(N,1,(2*X+2*Z1)/(3*X+2*Z1+Z2))
+    T1d = rbinom(N,1,(2*X1+2*Z1)/(3*X1+2*Z1+Z2))
     # If Tad=1, T happens; If Tad=0, R happens.
     # Next generate T-R when Tad=0.
-    TwR0 = rexp(N,0.05*1/2)
-    TwR1 = rexp(N,0.05*(1+Z3)/2)
+    TwR0 = rexp(N,0.05*X2*1/2)
+    TwR1 = rexp(N,0.05*(X2+Z3)/2)
     TwR0 = sqrt(TwR0+TorR0^2) - TorR0
     TwR1 = sqrt(TwR1+TorR1^2) - TorR1
   }
   if (setting==3){ #semimarkov
-    TorR0 = rweibull(N,2,sqrt(2/(0.06*X)))
-    TorR1 = rweibull(N,2,sqrt(2/(0.06*X+0.04*Z1+0.02*Z2)))
+    TorR0 = rweibull(N,2,sqrt(2/(0.06*X1)))
+    TorR1 = rweibull(N,2,sqrt(2/(0.06*X1+0.04*Z1+0.02*Z2)))
     T0d = rbinom(N,1,2/3)
-    T1d = rbinom(N,1,2*(X+Z1)/(3*X+2*Z1+Z2))
+    T1d = rbinom(N,1,2*(X1+Z1)/(3*X1+2*Z1+Z2))
     # If Tad=1, T happens; If Tad=0, R happens.
     # Next generate T-R when Tad=0.
-    TwR0 = rweibull(N,2,sqrt(2/(0.1*1)))
-    TwR1 = rweibull(N,2,sqrt(2/(0.1*1+0.1*Z3)))
+    TwR0 = rweibull(N,2,sqrt(2/(0.1*X2)))
+    TwR1 = rweibull(N,2,sqrt(2/(0.1*X2+0.1*Z3)))
   }
   R1 = TorR1 + T1d*99
   R0 = TorR0 + T0d*99
   T1 = TorR1 + (1-T1d)*TwR1
   T0 = TorR0 + (1-T0d)*TwR0
+  cif1 = sapply(xseq, function(x) mean(T1<=x))
+  cif0 = sapply(xseq, function(x) mean(T0<=x))
   T = A*T1 + (1-A)*T0
   R = A*R1 + (1-A)*R0
   C = runif(N,6,10)
@@ -46,7 +55,43 @@ generatedata <- function(N,setting,Z1=1,Z2=1,Z3=1){
   dT = as.numeric(T<=C)
   Rt = dR*R + (1-dR)*C
   Tt = dT*T + (1-dT)*C
-  return(list(A=A,T=Tt,dT=dT,R=Rt,dR=dR,X=X))
+  return(list(A=A,T=Tt,dT=dT,R=Rt,dR=dR,X=X,cif1=cif1,cif0=cif0))
+}
+
+cif <- function(setting,a){
+  xseq = seq(0,8,length=100)
+  N = 10000
+  Z1 = a[1]
+  Z2 = a[2]
+  Z3 = a[3]
+  X1 = rbinom(N,1,0.5)/2+0.5
+  X2 = rbinom(N,1,0.5)/2+0.5
+  if (setting==1){ #markov&semimarkov
+    TorR1 = rexp(N,0.25*X1+0.15*Z1+0.1*Z2)
+    T1d = rbinom(N,1,0.15*(X1+Z1)/(0.25*X1+0.15*Z1+0.1*Z2))
+    # If Tad=1, T happens; If Tad=0, R happens.
+    # Next generate T-R when Tad=0.
+    TwR1 = rexp(N,0.2*(X2+Z3))
+  }
+  if (setting==2){ #markov
+    TorR1 = rweibull(N,2,sqrt(2/(0.06*X1+0.04*Z1+0.02*Z2)))
+    T1d = rbinom(N,1,(2*X1+2*Z1)/(3*X1+2*Z1+Z2))
+    # If Tad=1, T happens; If Tad=0, R happens.
+    # Next generate T-R when Tad=0.
+    TwR1 = rexp(N,0.05*(X2+Z3)/2)
+    TwR1 = sqrt(TwR1+TorR1^2) - TorR1
+  }
+  if (setting==3){ #semimarkov
+    TorR1 = rweibull(N,2,sqrt(2/(0.06*X1+0.04*Z1+0.02*Z2)))
+    T1d = rbinom(N,1,2*(X1+Z1)/(3*X1+2*Z1+Z2))
+    # If Tad=1, T happens; If Tad=0, R happens.
+    # Next generate T-R when Tad=0.
+    TwR1 = rweibull(N,2,sqrt(2/(0.1*X2+0.1*Z3)))
+  }
+  R1 = TorR1 + T1d*99
+  T1 = TorR1 + (1-T1d)*TwR1
+  cif.a = sapply(xseq, function(x) mean(T1<=x))
+  return(cif.a)
 }
 
 Erf <- function(x) 2*pnorm(x,0,1/sqrt(2))-1
@@ -93,7 +138,7 @@ meaninc <- function(t,setting,a){
 # Draw cumulative incidence
 B = 100
 a = c(1,0,0)
-for (N in c(100,500,2000)){
+for (N in c(100,500)){
   par(mfcol=c(2,3))
   for (setting in 1:3){
     cat('N =',N,' Setting',setting,' a =',a,'\n')
@@ -132,9 +177,8 @@ for (N in c(100,500,2000)){
       cil = c(fit$ci_l[xt<8],max(fit$ci_l[xt<8]))
       points(x,ciu,type='l',lwd=1,lty=4,col='brown')
       points(x,cil,type='l',lwd=1,lty=4,col='brown')
-      x = seq(0,8,length=100)
-      y = meaninc(x,setting,a)
-      points(x,y,type='l')
+      #y = meaninc(xs,setting,a)
+      points(xseq,cif(setting,a),type='l')
     }
   }
 }
@@ -142,7 +186,7 @@ for (N in c(100,500,2000)){
 # Draw bias
 B = 1000
 xseq = seq(0,8,length=100)
-for (N in c(100,500,2000)){
+for (N in c(100,500)){
   for (alist in 1:3){
     if (alist==1) a = c(0,0,0)
     if (alist==2) a = c(1,0,0)
@@ -151,13 +195,14 @@ for (N in c(100,500,2000)){
     for (setting in 1:3){
       cat('N =',N,' Setting',setting,' a =',a,'\n')
       set.seed(2024)
-      plot(NULL,NULL,xlim=c(0,8),ylim=c(-.04,.07),xlab='Time',
+      plot(NULL,NULL,xlim=c(0,8),ylim=c(-.1,.1),xlab='Time',
            ylab='Bias',main=paste('Setting', setting))
       abline(h=0,lty=2)
       if (alist==1) mtext('a = (0,0,0)', cex=0.8)
       if (alist==2) mtext('a = (1,0,0)', cex=0.8)
       if (alist==3) mtext('a = (1,0,1)', cex=0.8)
-      yseq = meaninc(xseq,setting,a)
+      #yseq = meaninc(xseq,setting,a)
+      yseq = cif(setting,a)
       bias1 = bias2 = bias3 = bias4 = rep(0,100)
       rmse1 = rmse2 = rmse3 = rmse4 = rep(0,100)
       for (i in 1:B){
@@ -170,7 +215,7 @@ for (N in c(100,500,2000)){
         bs = matchy(fit$F1+fit$F3,fit$time,xseq) - yseq
         bias2 = bias2 + bs
         rmse2 = rmse2 + bs^2
-        fit = huang(dat$A,dat$T,dat$dT,dat$R,dat$dR,dat$X,a=a[1:2])
+        fit = huang.nx(dat$A,dat$T,dat$dT,dat$R,dat$dR,a=a[1:2],X=dat$X)
         bs = matchy(fit$F,fit$Time,xseq) - yseq
         bias3 = bias3 + bs
         rmse3 = rmse3 + bs^2

@@ -1,3 +1,5 @@
+library(survival)
+
 pscore <- function(A,X,weights=NULL,stabilized=FALSE){
   if (!is.null(weights)){
     w0 = (1-A)*weights
@@ -23,7 +25,11 @@ pscore <- function(A,X,weights=NULL,stabilized=FALSE){
 
 matchy <- function(yvec,xvec,newx){
   ivec = sapply(newx, function(x) max(which(xvec<=x)))
-  return(yvec[ivec])
+  if (is.vector(yvec)) {
+    return(yvec[ivec])
+  } else {
+    return(yvec[ivec,])
+  }
 }
 
 geteta <- function(x, beta){
@@ -290,7 +296,7 @@ treatmentpolicy <- function(A,T,dT,R=NULL,dR=NULL,X=NULL,weights=NULL,a,conf.int
   return(list(time=c(0,tseq),F=F,a=a))
 }
 
-huang.nx <- function(A,T,dT,R,dR,subset=NULL,a){
+huang.nx <- function(A,T,dT,R,dR,subset=NULL,a,X=NULL){
   if (!is.null(subset)){
     A = A[subset]
     T = T[subset]
@@ -339,8 +345,9 @@ huang <- function(A,T,dT,R,dR,X,a){
   return(list(Time=tseq,F=F,a=a))
 }
 
-testpath <- function(A,T,dT,R,dR,X=NULL,weights=NULL){
+testpath <- function(A,T,dT,R,dR,X=NULL,weights=NULL,ties=TRUE){
   w = pscore(A,X,weights)
+  if (!ties) dR[T==R&dT==1] = 0
   tseq = sort(unique(c(T[dT==1],R[dR==1])))
   TR = sort(unique((T-R)[dR==1]))
   K = length(tseq)
@@ -500,7 +507,8 @@ cox_est <- function(A,T,R,dT,dR,X=NULL,max_iter=50){
 }
 
 semicr <- function(A, T, dT=rep(1,length(T)), R, dR=rep(1,length(R)), X=NULL, weights=NULL, a,
-                   asm=c('markov','semimarkov'), sens=NULL, conf.int=NULL, nboot=0, subset=NULL){
+                   asm=c('markov','semimarkov'), sens=NULL, conf.int=NULL, nboot=0, ties=TRUE,
+                   subset=NULL){
   if (length(asm)>1) asm = asm[1]
   if (!asm %in% c('markov','semimarkov')) {
     return(cat('Please specify "asm" = "markov" or "semimarkov"!'))
@@ -514,6 +522,7 @@ semicr <- function(A, T, dT=rep(1,length(T)), R, dR=rep(1,length(R)), X=NULL, we
     dR = dR[subset]
     if (!is.null(X)) X = X[subset,]
   }
+  if (!ties) dR[R==T&dT==1] = 0
   if (!is.null(sens)) fit=semi_sensitivity(A,T,dT,R,dR,X,weights,a,sens)
   if (asm=='markov') fit=semi_markov(A,T,dT,R,dR,X,weights,a,conf.int)
   if (asm=='semimarkov') fit=semi_semimarkov(A,T,dT,R,dR,X,weights,a,conf.int)
@@ -542,13 +551,14 @@ semicr <- function(A, T, dT=rep(1,length(T)), R, dR=rep(1,length(R)), X=NULL, we
   return(fit)
 }
 
-semicr.causal <- function(A, T, dT, R, dR, X=NULL, weights=NULL, a1=c(1,0,0), a0=c(0,0,0), 
-                          asm='markov', sens=NULL, conf.int=NULL, nboot=0,
-                          xlab='Time', ylim=c(0,1), legend=c('A = 1','A = 0'), cex=0.8, ...){
-  fit1 = semicr(A,T,dT,R,dR,X,weights,a1,asm,sens,conf.int,nboot)
-  fit0 = semicr(A,T,dT,R,dR,X,weights,a0,asm,sens,conf.int,nboot)
+semicr.causal <- function(A, T, dT, R, dR, X=NULL, weights=NULL, a1=1, a0=0, 
+                          asm='markov', sens=NULL, conf.int=NULL, nboot=0, ties=TRUE,
+                          xlab='Time', ylab='Cumulative incidence', ylim=c(0,1), 
+                          legend=c('A = 1','A = 0'), cex=0.8, ...){
+  fit1 = semicr(A,T,dT,R,dR,X,weights,a1,asm,sens,conf.int,nboot,ties)
+  fit0 = semicr(A,T,dT,R,dR,X,weights,a0,asm,sens,conf.int,nboot,ties)
   plot(fit1$time,fit1$F1,type='s',lwd=2,ylim=c(0,1),col='brown',
-       ylab='Cumulative incidence',xlab=xlab,main='Cumulative incidences of each state')
+       ylab=ylab,xlab=xlab,main='Cumulative incidences of each state')
   points(fit1$time,1-fit1$F2,type='s',lwd=2,lty=5,col='brown')
   points(fit1$time,1-fit1$F3,type='s',lwd=2,lty=4,col='brown')
   points(fit0$time,fit0$F1,type='s',lwd=2,col='darkcyan')
@@ -557,7 +567,7 @@ semicr.causal <- function(A, T, dT, R, dR, X=NULL, weights=NULL, a1=c(1,0,0), a0
   legend('left',cex=cex,legend=legend,col=c('brown','darkcyan'),
          lwd=c(2,2),...)
   plot(fit1$time,fit1$F1+fit1$F3,type='s',lwd=2,ylim=ylim,col='brown',
-       ylab='Cumulative incidence',xlab=xlab,main='Incidence of the primary event')
+       ylab=ylab,xlab=xlab,main='Incidence of the primary event')
   points(fit0$time,fit0$F1+fit0$F3,type='s',lwd=2,col='darkcyan')
   if (is.null(sens) & !is.null(conf.int)){
     points(fit1$time,fit1$ci_u,type='s',lwd=1,lty=2,col='brown')
@@ -569,7 +579,7 @@ semicr.causal <- function(A, T, dT, R, dR, X=NULL, weights=NULL, a1=c(1,0,0), a0
          lwd=c(2,2),...)
 }
 
-semicr.sensitivity <- function(A, T, dT, R, dR, X=NULL, a1=1, weights=NULL, a0=0, sens=seq(0,1,0.2),
+semicr.sensitivity <- function(A, T, dT, R, dR, X=NULL, weights=NULL, a1=1, a0=0, sens=seq(0,1,0.2),
                                xlab='Time', ylim=c(-1,1), cex=0.8, ...){
   plot(NULL,NULL,xlim=c(0,max(c(T[dT==1],R[dR==1]))),ylim=ylim,xlab=xlab,ylab='Separable effect',
        main='Sensitivity Analysis')
@@ -584,6 +594,103 @@ semicr.sensitivity <- function(A, T, dT, R, dR, X=NULL, a1=1, weights=NULL, a0=0
     points(tm,y,type='s',col=s+1,lwd=1.5)
   }
   legend('topleft',cex=cex,legend=sens,col=(1:m)+1,lwd=rep(1.5,m),...)
+}
+
+semix_markov <- function(A, T, dT, R, dR, X=NULL, weights=NULL, 
+                         subset=NULL, a, conf.int=NULL, nboot=100){
+  if (!is.null(subset)){
+    A = A[subset]
+    T = T[subset]
+    R = R[subset]
+    dT = dT[subset]
+    dR = dR[subset]
+    weights = weights[subset]
+    if (!is.null(X)){
+      X = as.matrix(X)[subset,]
+    }
+  }
+  w = pscore(A,X,weights)
+  dat = list(A=A,T=T,dT=dT,R=R,dR=dR,X=X,weight=weights)
+  if (length(a)==1) a = rep(a,3)
+  TR = (T+R-abs(T-R))/2
+  tseq = sort(unique(c(T[dT==1],R[dR==1])))
+  fit1 = coxph(Surv(TR,dT*(1-dR))~A+X,weights=weights)
+  pfit1 = survfit(fit1, newdata=data.frame(A=a[1],X))
+  cumhaz1 = matchy(pfit1$cumhaz, pfit1$time, tseq)
+  haz1 = diff(rbind(0,cumhaz1))
+  fit2 = coxph(Surv(TR,dR)~A+X,weights=weights)
+  pfit2 = survfit(fit2, newdata=data.frame(A=a[2],X))
+  cumhaz2 = matchy(pfit2$cumhaz, pfit2$time, tseq)
+  haz2 = diff(rbind(0,cumhaz2))
+  F1 = rowMeans(apply(exp(-cumhaz1-cumhaz2)*haz1,2,cumsum))
+  F2 = rowMeans(apply(exp(-cumhaz1-cumhaz2)*haz2,2,cumsum))
+  #fit3 = coxph(Surv(T,dT*dR)~A+X,weights=weights)
+  #pfit3 = survfit(fit3, newdata=data.frame(A=a[3],X))
+  #cumhaz3 = matchy(pfit3$cumhaz, pfit3$time, tseq)
+  pfit1.3 = survfit(fit1, newdata=data.frame(A=a[3],X))
+  pfit2.3 = survfit(fit2, newdata=data.frame(A=a[3],X))
+  fit = coxph(Surv(T,dT)~A+X,weights=weights)
+  pfit = survfit(fit, newdata=data.frame(A=a[3],X))
+  Ft = matchy(1-pfit$surv,pfit$time,tseq)
+  #fit12 = coxph(Surv(TR,1-(1-dT)*(1-dR))~A+X,weights=weights)
+  #pfit12 = survfit(fit12, newdata=data.frame(A=a[3],X))
+  #F12t = matchy(1-pfit12$surv,pfit$time,tseq)
+  cumhaz1.3 = matchy(pfit1.3$cumhaz, pfit1.3$time, tseq)
+  haz1.3 = diff(rbind(0,cumhaz1.3))
+  cumhaz2.3 = matchy(pfit2.3$cumhaz, pfit2.3$time, tseq)
+  haz2.3 = diff(rbind(0,cumhaz2.3))
+  F1t = apply(exp(-cumhaz1.3-cumhaz2.3)*haz1.3,2,cumsum)
+  F2t = apply(exp(-cumhaz1.3-cumhaz2.3)*haz2.3,2,cumsum)
+  dFt = diff(rbind(0,Ft))
+  dF1t = diff(rbind(0,F1t))
+  haz3 = (dFt-dF1t)/(F1t+F2t-Ft)
+  haz3[haz3<0] = 0
+  cumhaz3 = apply(haz3,2,cumsum)
+  F3 = F2 - rowMeans(exp(-cumhaz3)*apply(exp(-cumhaz1-cumhaz2+cumhaz3)*haz2,2,cumsum))
+  #F3[F3<0] = 0
+  se = NULL
+  if (!is.null(conf.int)){
+    F = NULL
+    for (b in 1:nboot){
+      ss = sample(1:length(A), replace=TRUE)
+      fit.b = semix_markov(A,T,dT,R,dR,X,weights,subset=ss,a)
+      F = rbind(F, matchy(fit.b$F1+fit.b$F3,fit.b$time,tseq))
+    }
+    se = apply(na.omit(F),2,sd)
+  }
+  return(list(dat=dat,time=c(0,tseq),F1=c(0,F1),F2=c(0,F2),F3=c(0,F3),a=a,se=c(0,se)))
+}
+
+semixcr.causal <- function(A, T, dT, R, dR, X=NULL, weights=NULL, subset=NULL,
+                           a1=1, a0=0, conf.int=NULL, nboot=100, 
+                           xlab='Time', ylab='Cumulative incidence', ylim=c(0,1),
+                           legend=c('A = 1','A = 0'), cex=0.8, ...){
+  fit1 = semix_markov(A,T,dT,R,dR,X,weights,subset,a1,conf.int,nboot)
+  fit0 = semix_markov(A,T,dT,R,dR,X,weights,subset,a0,conf.int,nboot)
+  plot(fit1$time,fit1$F1,type='s',lwd=2,ylim=c(0,1),col='brown',
+       ylab=ylab,xlab=xlab,main='Cumulative incidences of each state')
+  points(fit1$time,1-fit1$F2,type='s',lwd=2,lty=5,col='brown')
+  points(fit1$time,1-fit1$F3,type='s',lwd=2,lty=4,col='brown')
+  points(fit0$time,fit0$F1,type='s',lwd=2,col='darkcyan')
+  points(fit0$time,1-fit0$F2,type='s',lwd=2,lty=5,col='darkcyan')
+  points(fit0$time,1-fit0$F3,type='s',lwd=2,lty=4,col='darkcyan')
+  legend('left',cex=cex,legend=legend,col=c('brown','darkcyan'),
+         lwd=c(2,2),...)
+  plot(fit1$time,fit1$F1+fit1$F3,type='s',lwd=2,ylim=ylim,col='brown',
+       ylab=ylab,xlab=xlab,main='Incidence of the primary event')
+  points(fit0$time,fit0$F1+fit0$F3,type='s',lwd=2,col='darkcyan')
+  if (!is.null(conf.int)){
+    ciu1 = fit1$F1+fit1$F3+fit1$se*qnorm(1-(1-conf.int)/2)
+    cil1 = fit1$F1+fit1$F3-fit1$se*qnorm(1-(1-conf.int)/2)
+    ciu0 = fit0$F1+fit0$F3+fit0$se*qnorm(1-(1-conf.int)/2)
+    cil0 = fit0$F1+fit0$F3-fit0$se*qnorm(1-(1-conf.int)/2)
+    points(fit1$time,ciu1,type='s',lwd=1,lty=2,col='brown')
+    points(fit1$time,cil1,type='s',lwd=1,lty=2,col='brown')
+    points(fit0$time,ciu0,type='s',lwd=1,lty=2,col='darkcyan')
+    points(fit0$time,cil0,type='s',lwd=1,lty=2,col='darkcyan')
+  }
+  legend('topleft',cex=cex,legend=legend,col=c('brown','darkcyan'),
+         lwd=c(2,2),...)
 }
 
 #Time = ((R+T)-abs(R-T))/2
